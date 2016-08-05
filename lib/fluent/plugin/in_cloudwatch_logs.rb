@@ -38,14 +38,16 @@ module Fluent
     end
 
     def start
-      options = {}
-      options[:credentials] = Aws::Credentials.new(@aws_key_id, @aws_sec_key) if @aws_key_id && @aws_sec_key
-      options[:region] = @region if @region
-      options[:http_proxy] = @http_proxy if @http_proxy
-      @logs = Aws::CloudWatchLogs::Client.new(options)
+      $log.trace "Top of CloudwatchLogsInput.start"
+
+      # needed to make the multi-threading work correctly
+      Aws.eager_autoload!
 
       @finished = false
       @thread = Thread.new(&method(:run))
+      # this causes fluentd to stop completely if an exception occurs in the plugin's thread. This makes
+      # exceptions easier to track down, but shouldn't be there in production
+      @thread.abort_on_exception = true
     end
 
     def shutdown
@@ -75,6 +77,12 @@ module Fluent
     end
 
     def run
+      options = {}
+      options[:credentials] = Aws::Credentials.new(@aws_key_id, @aws_sec_key) if @aws_key_id && @aws_sec_key
+      options[:region] = @region if @region
+      options[:http_proxy] = @http_proxy if @http_proxy
+      @logs = Aws::CloudWatchLogs::Client.new(options)
+
       @next_fetch_time = Time.now
 
       until @finished
@@ -83,17 +91,17 @@ module Fluent
 
           if @use_log_stream_name_prefix
             log_streams = describe_log_streams
-            log_streams.each do |log_stram|
-              log_stream_name = log_stram.log_stream_name
+            log_streams.each do |log_stream|
+              log_stream_name = log_stream.log_stream_name
               events = get_events(log_stream_name)
               events.each do |event|
-                emit(event)
+                emit(event, log_stream_name)
               end
             end
           else
             events = get_events(@log_stream_name)
             events.each do |event|
-              emit(event)
+              emit(event, @log_stream_name)
             end
           end
         end
@@ -101,13 +109,19 @@ module Fluent
       end
     end
 
-    def emit(event)
+    def emit(event, log_stream_name=NIL)
       if @parser
         record = @parser.parse(event.message)
+        if log_stream_name
+          record[1]['cloudwatch_log_stream_name'] = log_stream_name
+        end
         router.emit(@tag, record[0], record[1])
       else
         time = (event.timestamp / 1000).floor
         record = JSON.parse(event.message)
+        if log_stream_name
+          record['cloudwatch_log_stream_name'] = log_stream_name
+        end
         router.emit(@tag, time, record)
       end
     end
