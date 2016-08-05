@@ -22,6 +22,7 @@ module Fluent
     config_param :state_file, :string
     config_param :fetch_interval, :time, default: 60
     config_param :http_proxy, :string, default: nil
+    config_param :start_days_ago, :integer, default: nil
 
     def initialize
       super
@@ -43,6 +44,14 @@ module Fluent
 
       # needed to make the multi-threading work correctly
       Aws.eager_autoload!
+
+      @from_event_timestamp = NIL
+      if @start_days_ago
+        start_seconds_ago = @start_days_ago * 24 * 60 * 60
+        from_event_time = Time.now - start_seconds_ago
+        # AWS timestamps are number of milliseconds since Jan 1, 1970 00:00:00 UTC
+        @from_event_timestamp = from_event_time.to_i * 1000
+      end
 
       @finished = false
       @thread = Thread.new(&method(:run))
@@ -92,7 +101,6 @@ module Fluent
 
           if @use_log_stream_name_prefix
             log_streams = describe_log_streams
-            # $log.trace "run. log_streams: " + log_streams.to_json
             log_streams.each do |log_stream|
               log_stream_name = log_stream.log_stream_name
               events = get_events(log_stream_name)
@@ -137,7 +145,12 @@ module Fluent
         log_group_name: @log_group_name,
         log_stream_name: log_stream_name
       }
-      request[:next_token] = next_token if next_token
+      # use next_token if there is one, otherwise use a start time if supplied
+      if next_token
+        request[:next_token] = next_token
+      elsif @from_event_timestamp
+        request[:start_time] = @from_event_timestamp
+      end
       response = @logs.get_log_events(request)
       store_next_token(response.next_forward_token, log_stream_name)
 
@@ -152,14 +165,29 @@ module Fluent
       request[:log_stream_name_prefix] = @log_stream_name
       response = @logs.describe_log_streams(request)
       if log_streams
-        log_streams << response.log_streams
+        log_streams.concat(filter_log_streams(response.log_streams))
       else
-        log_streams = response.log_streams
+        log_streams = filter_log_streams(response.log_streams)
       end
       if response.next_token
         log_streams = describe_log_streams(log_streams, response.next_token)
       end
       log_streams
+    end
+
+    def filter_log_streams(log_streams)
+      filtered_streams = []
+      # discard any streams whose events are too old
+      if @from_event_timestamp
+        log_streams.each do |log_stream|
+          if log_stream.last_event_timestamp >= @from_event_timestamp
+            filtered_streams << log_stream
+          end
+        end
+      else
+        filtered_streams = log_streams
+      end
+      filtered_streams
     end
   end
 end
