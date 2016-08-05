@@ -1,5 +1,6 @@
 module Fluent
   require 'fluent/mixin/config_placeholders'
+  require 'json'
 
   class CloudwatchLogsInput < Input
     Plugin.register_input('cloudwatch_logs', self)
@@ -91,6 +92,7 @@ module Fluent
 
           if @use_log_stream_name_prefix
             log_streams = describe_log_streams
+            # $log.trace "run. log_streams: " + log_streams.to_json
             log_streams.each do |log_stream|
               log_stream_name = log_stream.log_stream_name
               events = get_events(log_stream_name)
@@ -112,17 +114,21 @@ module Fluent
     def emit(event, log_stream_name=NIL)
       if @parser
         record = @parser.parse(event.message)
-        if log_stream_name
-          record[1]['cloudwatch_log_stream_name'] = log_stream_name
+        if record[1]
+          if log_stream_name
+            record[1]['cloudwatch_log_stream_name'] = log_stream_name
+          end
+          router.emit(@tag, record[0], record[1])
         end
-        router.emit(@tag, record[0], record[1])
       else
         time = (event.timestamp / 1000).floor
         record = JSON.parse(event.message)
-        if log_stream_name
-          record['cloudwatch_log_stream_name'] = log_stream_name
+        if record
+          if log_stream_name
+            record['cloudwatch_log_stream_name'] = log_stream_name
+          end
+          router.emit(@tag, time, record)
         end
-        router.emit(@tag, time, record)
       end
     end
 
