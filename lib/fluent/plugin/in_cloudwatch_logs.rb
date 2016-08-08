@@ -180,7 +180,7 @@ module Fluent
       # discard any streams whose events are too old
       if @from_event_timestamp
         log_streams.each do |log_stream|
-          if log_stream.last_event_timestamp >= @from_event_timestamp
+          if log_stream.last_event_timestamp && (log_stream.last_event_timestamp >= @from_event_timestamp)
             filtered_streams << log_stream
           end
         end
