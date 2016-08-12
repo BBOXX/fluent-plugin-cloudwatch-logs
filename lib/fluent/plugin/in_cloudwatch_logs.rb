@@ -124,7 +124,7 @@ module Fluent
         record = @parser.parse(event.message)
         if record[1]
           if log_stream_name
-            record[1]['cloudwatch_log_stream_name'] = log_stream_name
+            record[1]['_stream'] = log_stream_name
           end
           router.emit(@tag, record[0], record[1])
         end
@@ -133,7 +133,7 @@ module Fluent
         record = JSON.parse(event.message)
         if record
           if log_stream_name
-            record['cloudwatch_log_stream_name'] = log_stream_name
+            record['_stream'] = log_stream_name
           end
           router.emit(@tag, time, record)
         end
