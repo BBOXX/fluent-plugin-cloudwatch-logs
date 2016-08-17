@@ -73,14 +73,24 @@ module Fluent
       end
     end
 
-    def next_token
-      return nil unless File.exist?(@state_file)
-      File.read(@state_file).chomp
+    def state_file_name(log_stream_name)
+      name = @state_file
+      name = "#{@state_file}_#{log_stream_name}" if log_stream_name
+      return name
+    end
+
+    def next_token(log_stream_name)
+      state_file = state_file_name(log_stream_name)
+      $log.trace "next_token. state_file: " + state_file
+      return nil unless File.exist?(state_file)
+      token = File.read(state_file).chomp
+      $log.trace "next_token. token: " + token
+      return token
     end
 
     def store_next_token(token, log_stream_name = nil)
-      state_file = @state_file
-      state_file = "#{@state_file}_#{log_stream_name}" if log_stream_name
+      state_file = state_file_name(log_stream_name)
+      $log.trace "store_next_token. state_file: " + state_file + ". token: " + token
       open(state_file, 'w') do |f|
         f.write token
       end
@@ -145,9 +155,11 @@ module Fluent
         log_group_name: @log_group_name,
         log_stream_name: log_stream_name
       }
+      $log.trace "get_events. log_stream_name: " + log_stream_name
       # use next_token if there is one, otherwise use a start time if supplied
-      if next_token
-        request[:next_token] = next_token
+      token = next_token(log_stream_name)
+      if token
+        request[:next_token] = token
       elsif @from_event_timestamp
         request[:start_time] = @from_event_timestamp
       end
