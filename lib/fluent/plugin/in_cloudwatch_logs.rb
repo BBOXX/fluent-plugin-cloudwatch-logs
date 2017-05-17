@@ -117,6 +117,8 @@ module Fluent
               events.each do |event|
                 emit(event, log_stream_name)
               end
+              # avoid AWS Throttling error by pausing between each stream.
+              sleep 1
             end
           else
             events = get_events(@log_stream_name)
