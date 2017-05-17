@@ -158,7 +158,7 @@ module Fluent
       $log.trace "get_events. log_stream_name: " + log_stream_name
       # use next_token if there is one, otherwise use a start time if supplied
       token = next_token(log_stream_name)
-      if token
+      if !token.nil? && !token.empty?
         request[:next_token] = token
       elsif @from_event_timestamp
         request[:start_time] = @from_event_timestamp
@@ -173,7 +173,7 @@ module Fluent
       request = {
         log_group_name: @log_group_name
       }
-      request[:next_token] = next_token if next_token
+      request[:next_token] = next_token if (!next_token.nil? && !next_token.empty?)
       request[:log_stream_name_prefix] = @log_stream_name
       response = @logs.describe_log_streams(request)
       if log_streams
