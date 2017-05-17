@@ -184,6 +184,8 @@ module Fluent
         log_streams = filter_log_streams(response.log_streams)
       end
       if response.next_token
+        # avoid AWS Throttling error by pausing between each call.
+        sleep 1
         log_streams = describe_log_streams(log_streams, response.next_token)
       end
       log_streams
